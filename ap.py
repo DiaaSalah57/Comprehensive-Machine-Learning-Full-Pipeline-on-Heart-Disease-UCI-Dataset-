@@ -1,12 +1,10 @@
-# =========================================
-# Step 1: Import Libraries
-# =========================================
+
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
 from scipy.cluster.hierarchy import linkage, dendrogram
-import joblib # Import joblib for saving the model and pipeline
+import joblib 
 
 from sklearn.ensemble import RandomForestClassifier
 from xgboost import XGBClassifier
@@ -21,65 +19,57 @@ from sklearn.metrics import (
     roc_auc_score, roc_curve, classification_report, adjusted_rand_score
 )
 from sklearn.cluster import KMeans, AgglomerativeClustering
-from sklearn.pipeline import Pipeline # Import Pipeline
+from sklearn.pipeline import Pipeline 
 from ucimlrepo import fetch_ucirepo
 
-# ===============================
-# Load the Heart Disease Dataset
-# ===============================
+
+
 heart_disease = fetch_ucirepo(id=45)
 
-# Extract features and target
+
 X = heart_disease.data.features
 y = heart_disease.data.targets
 
-# Combine into a single DataFrame
+
 df = pd.concat([X, y], axis=1)
 print("Initial DataFrame shape:", df.shape)
 
-# ===============================
-# Handle Missing Values
-# ===============================
+
 for col in df.columns:
     if df[col].dtype == 'object':
         df[col].fillna(df[col].mode()[0], inplace=True)
     else:
         df[col].fillna(df[col].median(), inplace=True)
 
-# ===============================
-# Encode Categorical Variables
-# ===============================
+
 df_encoded = pd.get_dummies(df, drop_first=True)
 print("Shape after encoding:", df_encoded.shape)
 
-# Separate features and target
-X_features = df_encoded.drop(columns=['num']) # 'num' is the target column
-# Binarize the target variable: 0 = no disease, >0 = disease present (1)
+
+X_features = df_encoded.drop(columns=['num']) 
+
 y_target = (df_encoded['num'] > 0).astype(int)
 
-# Scale the features
+
 scaler = StandardScaler()
 X_scaled = pd.DataFrame(scaler.fit_transform(X_features), columns=X_features.columns)
 print("Scaled Features Shape:", X_scaled.shape)
 
-# =========================================
-# Step 2: Train/Test Split
-# =========================================
+
 X_train, X_test, y_train, y_test = train_test_split(
     X_scaled, y_target, test_size=0.2, random_state=42, stratify=y_target
 )
 print("Training set shape:", X_train.shape)
 print("Testing set shape:", X_test.shape)
 
-# =========================================
-# Step 3: Feature Importance - Random Forest
-# =========================================
+
 rf = RandomForestClassifier(n_estimators=100, random_state=42)
 rf.fit(X_train, y_train)
 
 rf_importances = pd.Series(rf.feature_importances_, index=X_scaled.columns).sort_values(ascending=False)
 
-# Plot Random Forest feature importance
+
+
 plt.figure(figsize=(10, 6))
 sns.barplot(x=rf_importances.values, y=rf_importances.index, palette="viridis")
 plt.title("Random Forest Feature Importance")
@@ -90,15 +80,13 @@ plt.show()
 print("\nTop 10 Features (Random Forest):")
 print(rf_importances.head(10))
 
-# =========================================
-# Step 4: Feature Importance - XGBoost
-# =========================================
+
 xgb = XGBClassifier(eval_metric='logloss', random_state=42)
 xgb.fit(X_train, y_train)
 
 xgb_importances = pd.Series(xgb.feature_importances_, index=X_scaled.columns).sort_values(ascending=False)
 
-# Plot XGBoost feature importance
+
 plt.figure(figsize=(10, 6))
 sns.barplot(x=xgb_importances.values, y=xgb_importances.index, palette="coolwarm")
 plt.title("XGBoost Feature Importance")
@@ -109,9 +97,8 @@ plt.show()
 print("\nTop 10 Features (XGBoost):")
 print(xgb_importances.head(10))
 
-# =========================================
-# Step 5: Recursive Feature Elimination (RFE)
-# =========================================
+
+
 rfe_selector = RFE(estimator=RandomForestClassifier(random_state=42), n_features_to_select=8)
 rfe_selector.fit(X_train, y_train)
 
@@ -119,7 +106,7 @@ rfe_selected_features = X_scaled.columns[rfe_selector.support_]
 print("\nSelected Features using RFE:")
 print(list(rfe_selected_features))
 
-# Plot RFE feature ranking
+
 rfe_ranking = pd.Series(rfe_selector.ranking_, index=X_scaled.columns).sort_values()
 
 plt.figure(figsize=(10, 6))
@@ -129,10 +116,7 @@ plt.xlabel("Rank")
 plt.ylabel("Features")
 plt.show()
 
-# =========================================
-# Step 6: Chi-Square Test
-# =========================================
-# Chi-square requires non-negative data (shift to positive values)
+
 X_chi = X_scaled - X_scaled.min().min()
 
 chi_selector = SelectKBest(score_func=chi2, k=8)
@@ -140,7 +124,7 @@ chi_selector.fit(X_chi, y_target)
 
 chi_scores = pd.Series(chi_selector.scores_, index=X_scaled.columns).sort_values(ascending=False)
 
-# Plot Chi-Square scores
+
 plt.figure(figsize=(10, 6))
 sns.barplot(x=chi_scores.values, y=chi_scores.index, palette="mako")
 plt.title("Chi-Square Test Feature Scores")
@@ -151,9 +135,7 @@ plt.show()
 print("\nTop 8 Features (Chi-Square Test):")
 print(chi_scores.head(8))
 
-# =========================================
-# Step 7: Final Feature Selection
-# =========================================
+
 top_rf = set(rf_importances.head(8).index)
 top_xgb = set(xgb_importances.head(8).index)
 top_rfe = set(rfe_selected_features)
@@ -166,24 +148,18 @@ print(final_features)
 X_final = X_scaled[final_features]
 print("\nFinal Dataset Shape:", X_final.shape)
 
-# =========================================
-# Step 8: Final Correlation Heatmap (Optional)
-# =========================================
+
 plt.figure(figsize=(8, 6))
 sns.heatmap(X_final.corr(), cmap="coolwarm", annot=True)
 plt.title("Correlation Heatmap of Final Selected Features")
 plt.show()
 
-# =========================================
-# Step 9: Train/Test Split for Final Features
-# =========================================
+
 X_train_final, X_test_final, y_train_final, y_test_final = train_test_split(
     X_final, y_target, test_size=0.2, random_state=42, stratify=y_target
 )
 
-# =========================================
-# Step 10: Train Multiple Models
-# =========================================
+
 models = {
     "Logistic Regression": LogisticRegression(max_iter=1000, random_state=42),
     "Decision Tree": DecisionTreeClassifier(random_state=42),
@@ -200,14 +176,14 @@ print("="*50)
 plt.figure(figsize=(8, 6))
 
 for name, model in models.items():
-    # Train model
+    
     model.fit(X_train_final, y_train_final)
     
-    # Predictions
+   
     y_pred = model.predict(X_test_final)
     y_pred_proba = model.predict_proba(X_test_final)[:, 1]
     
-    # Metrics (using binary metrics)
+   
     acc = accuracy_score(y_test_final, y_pred)
     prec = precision_score(y_test_final, y_pred) 
     rec = recall_score(y_test_final, y_pred) 
@@ -227,9 +203,7 @@ for name, model in models.items():
     fpr, tpr, _ = roc_curve(y_test_final, y_pred_proba)
     plt.plot(fpr, tpr, label=f"{name} (AUC={auc:.3f})")
 
-# =========================================
-# Step 11: ROC Curve Visualization
-# =========================================
+
 plt.plot([0, 1], [0, 1], linestyle="--", color="gray")
 plt.xlabel("False Positive Rate")
 plt.ylabel("True Positive Rate")
@@ -238,9 +212,7 @@ plt.legend()
 plt.grid(True)
 plt.show()
 
-# =========================================
-# Step 12: Display Supervised Results
-# =========================================
+
 results_df = pd.DataFrame(results)
 print("\nModel Performance Summary (Supervised Classification):\n")
 print(results_df.sort_values(by='AUC', ascending=False))
@@ -251,10 +223,8 @@ for name, model in models.items():
     y_pred = model.predict(X_test_final)
     print(classification_report(y_test_final, y_pred))
 
-# -------------------------------------------------------------
-# =========================================
-# Step 13: Unsupervised Clustering
-# =========================================
+
+
 print("\n" + "="*50)
 print("Step 13: Unsupervised Clustering Analysis")
 print("="*50)
@@ -304,38 +274,35 @@ plt.xlabel('Sample Index (or Cluster Size)')
 plt.ylabel('Distance')
 plt.show()
 
-# Apply Agglomerative Clustering for K=2
+
+
 hierarchical_model = AgglomerativeClustering(n_clusters=optimal_k, linkage='ward')
 hierarchical_labels = hierarchical_model.fit_predict(X_final)
 
 
-# =========================================
-# Step 14: Compare Clusters with Actual Labels
-# =========================================
+
 print("\n" + "="*50)
 print("Step 14: Cluster Comparison with Actual Binarized Labels")
 print("="*50)
 
-# Adjusted Rand Index (ARI) measures similarity between clusterings
+
 ari_kmeans = adjusted_rand_score(y_target, kmeans_labels)
 print(f"K-Means (K={optimal_k}) vs Actual Labels (ARI): {ari_kmeans:.4f}")
 
 ari_hierarchical = adjusted_rand_score(y_target, hierarchical_labels)
 print(f"Hierarchical Clustering (K={optimal_k}) vs Actual Labels (ARI): {ari_hierarchical:.4f}")
 
-# --- 14.3 Visualizing K-Means Clusters ---
+
 cluster_df = X_final.copy()
 cluster_df['KMeans_Cluster'] = kmeans_labels
 cluster_df['Actual_Label'] = y_target.values
 
-# =========================================
-# Step 15: Save the Best Model and Full Pipeline
-# =========================================
+
 print("\n" + "="*50)
 print("Step 15: Saving the Best Model and Pipeline")
 print("="*50)
 
-# 1. Determine the overall best model based on AUC
+
 best_row = results_df.loc[results_df['AUC'].idxmax()]
 best_model_name = best_row['Model']
 best_model_auc = best_row['AUC']
@@ -343,8 +310,7 @@ model_obj = models[best_model_name]
 
 print(f"Overall Best Model: {best_model_name} (AUC: {best_model_auc:.3f})")
 
-# 2. Create the full reproducible pipeline
-# A simple Feature Selector class is needed to select columns by name after scaling
+
 class FeatureSelector(object):
     def __init__(self, feature_names):
         self.feature_names = feature_names
@@ -355,19 +321,18 @@ class FeatureSelector(object):
     def transform(self, X):
         return X.iloc[:, self.indices_] # Select columns by index
 
-# Define the steps for the full pipeline
-# The pipeline is trained on the full, unscaled, un-feature-selected dataset (X_features)
+
 full_pipeline = Pipeline(steps=[
     ('feature_selector', FeatureSelector(final_features)),
     ('scaler', StandardScaler()),
     ('classifier', model_obj)
 ])
 
-# Retrain the entire pipeline on the full, encoded, raw feature dataset (X_features)
+
 print("Training final full pipeline on all data...")
 full_pipeline.fit(X_features, y_target)
 
-# 3. Save the pipeline using joblib
+
 model_filename = 'heart_disease_predictor_pipeline.pkl'
 joblipipelb.dump(full_ine, model_filename)
 
